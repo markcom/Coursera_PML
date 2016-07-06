@@ -1,0 +1,114 @@
+---
+title: "Peer Graded Assignment: Prediction Assignment Writeup"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Assignment Backgound
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har.
+
+  Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions:  
+  
+  * Class A: exactly according to the specification
+  * Class B: throwing the elbows to the front
+  * Class C: lifting the dumbbell only halfway
+  * Class D: lowering the dumbbell only halfway
+  * Class E: throwing the hips to the front
+
+### Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Acknowledgment
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+
+
+## Initialization and data loading / Cleaning
+
+The required libraries a seed are initalized first
+```{r init, warning=FALSE, message=FALSE}
+set.seed(4321)
+
+require(caret)
+require(randomForest)
+
+```
+
+Both training and testing datasets were downloaded on 6.7.2016.
+After manually checking the files it turned out that some values are missing or undefined - #DIV/0. I set those as NA.
+
+```{r loadData, cache=TRUE}
+trainData <- data.frame(read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"),
+                 na.strings=c("NA","#DIV/0!","")))
+testData <- data.frame(read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"),
+                 na.strings=c("NA","#DIV/0!","")))
+```
+
+When doing the initial exploration of the training data, it was also obvious, that many columns contain only NAs. I will only keep columns with more than 90% of actual data. Removing the first 7 rows.
+
+```{r removeNACOlumns}
+percentageOfNAs <-sapply(trainData, function(y) sum(is.na(y))/nrow(trainData))
+percentageOfNAs[c(1:7)] <- 1
+trainData <- trainData[,percentageOfNAs < .9]
+testData <- testData[,percentageOfNAs < .9]
+
+trainIndex <- createDataPartition(trainData$classe,
+                                  p = .9,
+                                  list = FALSE,
+                                  times = 1)
+
+trainDataSelection <- trainData[trainIndex,]
+trainDataVerification <- trainData[-trainIndex,]
+```
+
+### Training the model
+
+The expected result is a categorical value. That is the main reason, why I decided to start with a Random Forest training method with out-of-bag classifier and 10 resamplings. I do not think any additional preprocessing of the data is necessary in this case.
+
+```{r randomForest}
+model <- train(classe ~ .,
+               data = trainDataSelection,
+               method = "rf",
+               trControl = trainControl(
+                 method = "oob",
+                 number = 10
+               )
+)
+
+model$finalModel
+```
+
+My initial idea was to compare several models (and settings) and to choose the best one. But after this result (error rate of 0.44%) and the time needed to compute the model I keep the Random Forest.
+
+Because it is actually possible the model is already over-fitted, lets compare it to the 10% of original data I left out from the training
+
+### Verify model
+
+```{r predict, message=FALSE}
+verifyPrediction <- predict(model, trainDataVerification)
+```
+
+
+```{r confusionMatrix}
+confusionMatrix(verifyPrediction, trainDataVerification$classe)
+```
+
+Sensitivity and specificity for all classes are very close to one just as the inter-rater agreement (kappa). This model seems to be very accurate.
+
+
+### Get the results for the test data
+
+```{r predictTest}
+predict(model, testData)
+```
+
+The predicted values are as expected in the final assignement.
